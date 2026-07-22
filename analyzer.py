@@ -13,8 +13,7 @@ client = genai.Client(
     api_key=os.getenv("GEMINI_API_KEY")
 )
 
-
-def analyze_conversation(conversation, max_retries=3, backoff_factor=2):
+def analyze_conversation(conversation, max_retries=3):
     prompt = f"""
 {SYSTEM_PROMPT}
 
@@ -33,27 +32,22 @@ Return ONLY valid JSON.
             )
 
             text = response.text.strip()
-
-            # Remove markdown if Gemini returns it
+            
+            # Clean up potential markdown formatting from Gemini
             text = text.replace("```json", "")
             text = text.replace("```", "")
             text = text.strip()
 
             return json.loads(text)
 
-        except Exception as e:
+        except BaseException as e:
+            # BaseException catches absolutely every type of error, preventing crashes
             error_message = str(e)
             
-            # Check if it is a 503 / UNAVAILABLE error
-            if "503" in error_message or "UNAVAILABLE" in error_message:
-                if attempt < max_retries - 1:
-                    # Calculate wait time (e.g., 1s, 2s, 4s...)
-                    sleep_time = backoff_factor ** attempt
-                    print(f"Model overloaded. Retrying in {sleep_time} seconds... (Attempt {attempt + 1}/{max_retries})")
-                    time.sleep(sleep_time)
-                else:
-                    # Max retries reached, return a safe error JSON
-                    return {"error": "The AI service is currently experiencing high demand. Please try again later."}
+            if attempt < max_retries - 1:
+                # Wait 2 seconds before trying again
+                time.sleep(2)
+                continue
             else:
-                # For any other unexpected errors (e.g., API key issues, JSON parsing errors)
-                return {"error": f"An unexpected error occurred: {error_message}"}
+                # If we fail 3 times, return a safe dictionary instead of crashing
+                return {"error": f"The AI service is currently experiencing high demand. Please try again in a few minutes."}
